@@ -1,11 +1,5 @@
-**There is an new version of nnUNet with many benefits: [nnUNetv2](https://github.com/MIC-DKFZ/nnUNet).**
-
-**[2020_10_21] Update:** We now have documentation for [common questions](documentation/common_questions.md) and
-[common issues](documentation/common_problems_and_solutions.md). We now also provide [reference epoch times for
-several datasets and tips on how to identify bottlenecks](documentation/expected_epoch_times.md).
-
-Please read these documents before opening a new issue!
-
+export MLFLOW_TRACKING_URI=<uriname>
+export MLFLOW_TRACKING_TOKEN=$(gcloud auth print-identity-token)
 
 # nnU-Net
 
