@@ -13,6 +13,7 @@
 #    limitations under the License.
 
 import os
+import subprocess
 from batchgenerators.utilities.file_and_folder_operations import maybe_mkdir_p, join
 
 # do not modify these unless you know what you are doing
@@ -25,6 +26,27 @@ default_cascade_trainer = "nnUNetTrainerV2CascadeFullRes"
 """
 PLEASE READ paths.md FOR INFORMATION TO HOW TO SET THIS UP
 """
+
+def get_identity_token():
+    try:
+        # Run the gcloud command and capture its output
+        completed_process = subprocess.run(
+            ["gcloud", "auth", "print-identity-token"],
+            capture_output=True,
+            text=True,
+            check=True
+        )
+
+        # Get the output (identity token) as a string
+        return completed_process.stdout.strip()
+    except subprocess.CalledProcessError as e:
+        print(f"Error: unable to get the GCloud identity token because: {e}")
+        return None
+
+mlflow_tracking_token = get_identity_token()
+os.environ['MLFLOW_TRACKING_TOKEN'] = mlflow_tracking_token
+mlflow_tracking_uri = os.environ.get('MLFLOW_TRACKING_URI')
+
 
 base = os.environ['nnUNet_raw_data_base'] if "nnUNet_raw_data_base" in os.environ.keys() else None
 preprocessing_output_dir = os.environ['nnUNet_preprocessed'] if "nnUNet_preprocessed" in os.environ.keys() else None
@@ -56,3 +78,15 @@ else:
           "inference. If this is not intended behavior, please read documentation/setting_up_paths.md for information on how to set this "
           "up.")
     network_training_output_dir = None
+
+
+if mlflow_tracking_token is None:
+    print("mlflow_tracking_token is not defined so the experiment tracking cannot be sent "
+          "to mlflow. If this is not intended behavior, please read documentation/setting_up_paths.md for information "
+          "on how to set this up.")
+
+if mlflow_tracking_uri is None:
+    print("mlflow_tracking_uri is not defined so the experiment tracking cannot be sent "
+          "to mlflow. If this is not intended behavior, please read documentation/setting_up_paths.md for information "
+          "on how to set this up.")
+    

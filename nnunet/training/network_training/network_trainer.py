@@ -28,6 +28,10 @@ matplotlib.use("agg")
 from time import time, sleep
 import torch
 import numpy as np
+
+import mlflow
+from datetime import datetime, timedelta
+from nnunet.paths import default_plans_identifier, mlflow_tracking_token, mlflow_tracking_uri, get_identity_token
 from torch.optim import lr_scheduler
 import matplotlib.pyplot as plt
 import sys
@@ -218,6 +222,9 @@ class NetworkTrainer(object):
 
             fig.savefig(join(self.output_folder, "progress.png"))
             plt.close()
+
+
+            mlflow.log_artifact(join(self.output_folder, "progress.png"),artifact_path=f"fold_{self.fold}")
         except IOError:
             self.print_to_log_file("failed to plot: ", sys.exc_info())
 
@@ -459,6 +466,14 @@ class NetworkTrainer(object):
             self.all_tr_losses.append(np.mean(train_losses_epoch))
             self.print_to_log_file("train loss : %.4f" % self.all_tr_losses[-1])
 
+            if mlflow_tracking_uri:
+                if self.token_expiry_time < datetime.now():
+                    print("GCloud identity token has expired. Refreshing the token.")
+                    os.environ["MLFLOW_TRACKING_TOKEN"] = get_identity_token()
+                    self.token_expiry_time = datetime.now() + timedelta(minutes=self.token_timeout_minutes)
+                mlflow.log_metric(f"fold{self.fold}/loss/train",  np.mean(train_losses_epoch))
+
+
             with torch.no_grad():
                 # validation with train=False
                 self.network.eval()
@@ -478,6 +493,18 @@ class NetworkTrainer(object):
                         val_losses.append(l)
                     self.all_val_losses_tr_mode.append(np.mean(val_losses))
                     self.print_to_log_file("validation loss (train=True): %.4f" % self.all_val_losses_tr_mode[-1])
+
+
+                if mlflow_tracking_uri:
+                    if self.token_expiry_time < datetime.now():
+                        print("GCloud identity token has expired. Refreshing the token.")
+                        os.environ["MLFLOW_TRACKING_TOKEN"] = get_identity_token()
+                        self.token_expiry_time = datetime.now() + timedelta(minutes=self.token_timeout_minutes)
+                    mlflow.log_metric(f"fold{self.fold}/loss/validation", np.mean(val_losses))
+                    #mlflow.log_metric(f"fold{self.fold}/Mean Foreground Dice/validation", mean_fg_dice)
+                    #global_dc_per_class_dict = {f"fold{self.fold}/{str(i)}": d for i, d in enumerate(global_dc_per_class)}
+                    #mlflow.log_metrics(global_dc_per_class_dict)
+
 
             self.update_train_loss_MA()  # needed for lr scheduler and stopping of training
 

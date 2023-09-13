@@ -13,6 +13,8 @@
 #    limitations under the License.
 
 
+import json
+import subprocess
 import nnunet
 from batchgenerators.utilities.file_and_folder_operations import *
 from nnunet.experiment_planning.DatasetAnalyzer import DatasetAnalyzer
@@ -23,6 +25,26 @@ from nnunet.utilities.task_name_id_conversion import convert_id_to_task_name
 from nnunet.preprocessing.sanity_checks import verify_dataset_integrity
 from nnunet.training.model_restore import recursive_find_python_class
 
+
+def copy_git_info(dataset_ids: List[Union[int, str]]):
+    def get_git_remote_url():
+        command = ['git', '-C', nnUNet_raw, 'config', '--get', 'remote.origin.url']
+        return subprocess.check_output(command).decode('ascii').strip()
+
+    def get_git_revision_hash():
+        command = ['git', '-C', nnUNet_raw, 'rev-parse', 'HEAD']
+        return subprocess.check_output(command).decode('ascii').strip()
+
+    for dataset_id in dataset_ids:
+        dataset_name = convert_id_to_dataset_name(dataset_id)
+        try:
+            git_info = {"remote_url": get_git_remote_url(), "hash": get_git_revision_hash()}
+        except Exception as err:
+            print(f"Error: unable to get git information because of the following error: {err}")
+            return
+
+        with open(join(preprocessing_output_dir, dataset_name, 'git_info.json'), 'w') as f:
+            json.dump(git_info, f, indent=4)
 
 def main():
     import argparse
@@ -94,6 +116,7 @@ def main():
         assert planner_name3d == 'ExperimentPlanner3D_v21_Pretrained', "When using --overwrite_plans you need to use " \
                                                                        "'-pl3d ExperimentPlanner3D_v21_Pretrained'"
 
+    copy_git_info(task_ids)
     # we need raw data
     tasks = []
     for i in task_ids:

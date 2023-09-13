@@ -27,7 +27,10 @@ from batchgenerators.utilities.file_and_folder_operations import *
 from torch import nn
 from torch.optim import lr_scheduler
 
+import mlflow
+from datetime import datetime, timedelta
 import nnunet
+from nnunet.paths import mlflow_tracking_uri, get_identity_token
 from nnunet.configuration import default_num_threads
 from nnunet.evaluation.evaluator import aggregate_scores
 from nnunet.inference.segmentation_export import save_segmentation_nifti_from_softmax
@@ -98,6 +101,9 @@ class nnUNetTrainer(NetworkTrainer):
         self.folder_with_preprocessed_data = None
 
         # set in self.initialize()
+        self.token_timeout_minutes = 50
+        if mlflow_tracking_uri:
+            self.token_expiry_time = datetime.now() + timedelta(minutes=self.token_timeout_minutes)
 
         self.dl_tr = self.dl_val = None
         self.num_input_channels = self.num_classes = self.net_pool_per_axis = self.patch_size = self.batch_size = \
@@ -308,6 +314,7 @@ class nnUNetTrainer(NetworkTrainer):
         del dct['dataset_tr']
         del dct['dataset_val']
         save_json(dct, join(self.output_folder, "debug.json"))
+        mlflow.log_artifact(join(self.output_folder, "debug.json"),artifact_path=f"fold_{self.fold}")
 
         import shutil
 
@@ -666,17 +673,18 @@ class nnUNetTrainer(NetworkTrainer):
         for f in subfiles(self.gt_niftis_folder, suffix=".nii.gz"):
             success = False
             attempts = 0
+            e = None
             while not success and attempts < 10:
                 try:
                     shutil.copy(f, gt_nifti_folder)
                     success = True
-                except OSError:
-                    print("Could not copy gt nifti file %s into folder %s" % (f, gt_nifti_folder))
-                    traceback.print_exc()
+                except OSError as e:
                     attempts += 1
                     sleep(1)
             if not success:
-                raise OSError(f"Something went wrong while copying nifti files to {gt_nifti_folder}. See above for the trace.")
+                print("Could not copy gt nifti file %s into folder %s" % (f, gt_nifti_folder))
+                if e is not None:
+                    raise e
 
         self.network.train(current_mode)
 
@@ -714,6 +722,11 @@ class nnUNetTrainer(NetworkTrainer):
                                if not np.isnan(i)]
         self.all_val_eval_metrics.append(np.mean(global_dc_per_class))
 
+        mean_fg_dice =np.mean([np.round(i, 4) for i in global_dc_per_class])
+        mlflow.log_metric(f"fold{self.fold}/Mean Foreground Dice/validation", mean_fg_dice)
+
+        global_dc_per_class_dict = {f"fold{self.fold}/{str(i)}": d for i, d in enumerate(global_dc_per_class)}
+        mlflow.log_metrics(global_dc_per_class_dict)
         self.print_to_log_file("Average global foreground Dice:", [np.round(i, 4) for i in global_dc_per_class])
         self.print_to_log_file("(interpret this as an estimate for the Dice of the different classes. This is not "
                                "exact.)")

@@ -14,9 +14,11 @@
 
 
 import argparse
+import mlflow
+from datetime import datetime, timedelta
 from batchgenerators.utilities.file_and_folder_operations import *
 from nnunet.run.default_configuration import get_default_configuration
-from nnunet.paths import default_plans_identifier
+from nnunet.paths import default_plans_identifier, mlflow_tracking_token, mlflow_tracking_uri, get_identity_token
 from nnunet.run.load_pretrained_weights import load_pretrained_weights
 from nnunet.training.cascade_stuff.predict_next_stage import predict_next_stage
 from nnunet.training.network_training.nnUNetTrainer import nnUNetTrainer
@@ -139,6 +141,12 @@ def main():
     plans_file, output_folder_name, dataset_directory, batch_dice, stage, \
     trainer_class = get_default_configuration(network, task, network_trainer, plans_identifier)
 
+    if mlflow_tracking_uri:
+        os.environ['MLFLOW_TRACKING_TOKEN'] = get_identity_token()
+
+    if mlflow_tracking_uri and os.environ.get("MLFLOW_TRACKING_TOKEN"):
+        mlflow.set_experiment(experiment_name=args.task)
+
     if trainer_class is None:
         raise RuntimeError("Could not find trainer class in nnunet.training.network_training")
 
@@ -165,6 +173,7 @@ def main():
 
     trainer.initialize(not validation_only)
 
+    git_json = load_json(join(preprocessing_output_dir, task, 'git_info.json'))
     if find_lr:
         trainer.find_lr()
     else:
@@ -178,7 +187,9 @@ def main():
             else:
                 # new training without pretraine weights, do nothing
                 pass
-
+            with mlflow.start_run():
+                mlflow.log_params(vars(args))
+                mlflow.log_params(git_json)
             trainer.run_training()
         else:
             if valbest:
@@ -199,6 +210,19 @@ def main():
         if network == '3d_lowres' and not args.disable_next_stage_pred:
             print("predicting segmentations for the next stage of the cascade")
             predict_next_stage(trainer, join(dataset_directory, trainer.plans['data_identifier'] + "_stage%d" % 1))
+
+
+
+
+         if 0:
+            mlflow.pyfunc.log_model(
+                artifact_path="model",
+                loader_module="wrapper_model",
+                data_path=data_path,
+                conda_env=conda_env,
+                signature=signature,
+                code_path=[wrapper_model.__file__]
+            )
 
 
 if __name__ == "__main__":

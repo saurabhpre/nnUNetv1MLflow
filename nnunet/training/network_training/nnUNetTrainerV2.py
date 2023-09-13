@@ -16,6 +16,9 @@
 from collections import OrderedDict
 from typing import Tuple
 
+import mlflow
+from datetime import datetime, timedelta
+from nnunet.paths import mlflow_tracking_uri, get_identity_token
 import numpy as np
 import torch
 from nnunet.training.data_augmentation.data_augmentation_moreDA import get_moreDA_augmentation
@@ -45,12 +48,16 @@ class nnUNetTrainerV2(nnUNetTrainer):
                  unpack_data=True, deterministic=True, fp16=False):
         super().__init__(plans_file, fold, output_folder, dataset_directory, batch_dice, stage, unpack_data,
                          deterministic, fp16)
-        self.max_num_epochs = 1000
+        self.max_num_epochs = 500
         self.initial_lr = 1e-2
         self.deep_supervision_scales = None
         self.ds_loss_weights = None
 
         self.pin_memory = True
+        self.token_timeout_minutes = 50
+        if mlflow_tracking_uri:
+            self.token_expiry_time = datetime.now() + timedelta(minutes=self.token_timeout_minutes)
+
 
     def initialize(self, training=True, force_load_plans=False):
         """
@@ -263,6 +270,7 @@ class nnUNetTrainerV2(nnUNetTrainer):
                 l.backward()
                 torch.nn.utils.clip_grad_norm_(self.network.parameters(), 12)
                 self.optimizer.step()
+        mlflow.log_metric(f"fold{self.fold}/loss/trainloss",  np.mean(l.detach().cpu().numpy()))
 
         if run_online_evaluation:
             self.run_online_evaluation(output, target)
