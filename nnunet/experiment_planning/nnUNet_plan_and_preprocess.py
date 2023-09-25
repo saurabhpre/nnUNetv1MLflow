@@ -16,6 +16,7 @@
 import json
 import subprocess
 import nnunet
+from typing import Union
 from batchgenerators.utilities.file_and_folder_operations import *
 from nnunet.experiment_planning.DatasetAnalyzer import DatasetAnalyzer
 from nnunet.experiment_planning.utils import crop
@@ -36,7 +37,7 @@ def copy_git_info(dataset_ids: List[Union[int, str]]):
         return subprocess.check_output(command).decode('ascii').strip()
 
     for dataset_id in dataset_ids:
-        dataset_name = convert_id_to_dataset_name(dataset_id)
+        dataset_name = convert_id_to_task_name(int(dataset_id))
         try:
             git_info = {"remote_url": get_git_remote_url(), "hash": get_git_revision_hash()}
         except Exception as err:
