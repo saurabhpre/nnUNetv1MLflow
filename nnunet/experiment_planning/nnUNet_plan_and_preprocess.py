@@ -29,11 +29,11 @@ from nnunet.training.model_restore import recursive_find_python_class
 
 def copy_git_info(dataset_ids: List[Union[int, str]]):
     def get_git_remote_url():
-        command = ['git', '-C', nnUNet_raw, 'config', '--get', 'remote.origin.url']
+        command = ['git', '-C', nnUNet_raw_data, 'config', '--get', 'remote.origin.url']
         return subprocess.check_output(command).decode('ascii').strip()
 
     def get_git_revision_hash():
-        command = ['git', '-C', nnUNet_raw, 'rev-parse', 'HEAD']
+        command = ['git', '-C', nnUNet_raw_data, 'rev-parse', 'HEAD']
         return subprocess.check_output(command).decode('ascii').strip()
 
     for dataset_id in dataset_ids:
