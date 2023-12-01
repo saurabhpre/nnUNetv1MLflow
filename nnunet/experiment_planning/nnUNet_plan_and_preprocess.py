@@ -27,7 +27,7 @@ from nnunet.preprocessing.sanity_checks import verify_dataset_integrity
 from nnunet.training.model_restore import recursive_find_python_class
 
 
-def copy_git_info(dataset_ids: List[Union[int, str]]):
+def copy_git_info(dataset_ids: List[int]):
     def get_git_remote_url():
         command = ['git', '-C', nnUNet_raw_data, 'config', '--get', 'remote.origin.url']
         return subprocess.check_output(command).decode('ascii').strip()
@@ -117,7 +117,6 @@ def main():
         assert planner_name3d == 'ExperimentPlanner3D_v21_Pretrained', "When using --overwrite_plans you need to use " \
                                                                        "'-pl3d ExperimentPlanner3D_v21_Pretrained'"
 
-    copy_git_info(task_ids)
     # we need raw data
     tasks = []
     for i in task_ids:
@@ -168,6 +167,7 @@ def main():
         maybe_mkdir_p(preprocessing_output_dir_this_task)
         shutil.copy(join(cropped_out_dir, "dataset_properties.pkl"), preprocessing_output_dir_this_task)
         shutil.copy(join(nnUNet_raw_data, t, "dataset.json"), preprocessing_output_dir_this_task)
+        copy_git_info(task_ids)
 
         threads = (tl, tf)
 
