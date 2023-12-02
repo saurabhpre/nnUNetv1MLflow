@@ -158,58 +158,61 @@ def main():
     else:
         assert issubclass(trainer_class,
                           nnUNetTrainer), "network_trainer was found but is not derived from nnUNetTrainer"
-    for fold in folds:
-        trainer = trainer_class(plans_file, fold, output_folder=output_folder_name, dataset_directory=dataset_directory,
-                                batch_dice=batch_dice, stage=stage, unpack_data=decompress_data,
-                                deterministic=deterministic,
-                                fp16=run_mixed_precision)
-        if args.disable_saving:
-            trainer.save_final_checkpoint = False # whether or not to save the final checkpoint
-            trainer.save_best_checkpoint = False  # whether or not to save the best checkpoint according to
-            # self.best_val_eval_criterion_MA
-            trainer.save_intermediate_checkpoints = True  # whether or not to save checkpoint_latest. We need that in case
-            # the training chashes
-            trainer.save_latest_only = True  # if false it will not store/overwrite _latest but separate files each
+    
+    git_json = load_json(join(preprocessing_output_dir, task, 'git_info.json'))
+    with mlflow.start_run():
+        mlflow.log_params(vars(args))
+        mlflow.log_params(git_json)
+        for fold in folds:
+            trainer = trainer_class(plans_file, fold, output_folder=output_folder_name, dataset_directory=dataset_directory,
+                                    batch_dice=batch_dice, stage=stage, unpack_data=decompress_data,
+                                    deterministic=deterministic,
+                                    fp16=run_mixed_precision)
+            if args.disable_saving:
+                trainer.save_final_checkpoint = False # whether or not to save the final checkpoint
+                trainer.save_best_checkpoint = False  # whether or not to save the best checkpoint according to
+                # self.best_val_eval_criterion_MA
+                trainer.save_intermediate_checkpoints = True  # whether or not to save checkpoint_latest. We need that in case
+                # the training chashes
+                trainer.save_latest_only = True  # if false it will not store/overwrite _latest but separate files each
 
-        trainer.initialize(not validation_only)
+            trainer.initialize(not validation_only)
 
-        git_json = load_json(join(preprocessing_output_dir, task, 'git_info.json'))
-        if find_lr:
-            trainer.find_lr()
-        else:
-            if not validation_only:
-                if args.continue_training:
-                    # -c was set, continue a previous training and ignore pretrained weights
-                    trainer.load_latest_checkpoint()
-                elif (not args.continue_training) and (args.pretrained_weights is not None):
-                    # we start a new training. If pretrained_weights are set, use them
-                    load_pretrained_weights(trainer.network, args.pretrained_weights)
-                else:
-                    # new training without pretraine weights, do nothing
-                    pass
-                with mlflow.start_run():
-                    mlflow.log_params(vars(args))
-                    mlflow.log_params(git_json)
+            if find_lr:
+                trainer.find_lr()
+            else:
+                if not validation_only:
+                    if args.continue_training:
+                        # -c was set, continue a previous training and ignore pretrained weights
+                       trainer.load_latest_checkpoint()
+                    elif (not args.continue_training) and (args.pretrained_weights is not None):
+                        # we start a new training. If pretrained_weights are set, use them
+                        load_pretrained_weights(trainer.network, args.pretrained_weights)
+                    else:
+                        # new training without pretraine weights, do nothing
+                        pass
                     trainer.run_training()
-            else:
-                if valbest:
-                    trainer.load_best_checkpoint(train=False)
                 else:
-                    trainer.load_final_checkpoint(train=False)
+                    if valbest:
+                        trainer.load_best_checkpoint(train=False)
+                    else:
+                        trainer.load_final_checkpoint(train=False)
 
-            trainer.network.eval()
+                trainer.network.eval()
+    
+                if args.disable_validation_inference:
+                    mlflow.log_artifacts(join(output_folder_name, f"fold_{fold}","validation_raw"),artifact_path=join(f"fold_{fold}","validation"))
+                    print("Validation inference was disabled. Not running inference on validation set.")
+                else:
+                    # predict validation
+                    trainer.validate(save_softmax=args.npz, validation_folder_name=val_folder,
+                                    run_postprocessing_on_folds=not disable_postprocessing_on_folds,
+                                    overwrite=args.val_disable_overwrite)
+                    mlflow.log_artifacts(join(output_folder_name, f"fold_{fold}","validation_raw"),artifact_path=join(f"fold_{fold}","validation"))
 
-            if args.disable_validation_inference:
-                print("Validation inference was disabled. Not running inference on validation set.")
-            else:
-                # predict validation
-                trainer.validate(save_softmax=args.npz, validation_folder_name=val_folder,
-                                run_postprocessing_on_folds=not disable_postprocessing_on_folds,
-                                overwrite=args.val_disable_overwrite)
-
-            if network == '3d_lowres' and not args.disable_next_stage_pred:
-                print("predicting segmentations for the next stage of the cascade")
-                predict_next_stage(trainer, join(dataset_directory, trainer.plans['data_identifier'] + "_stage%d" % 1))
+                if network == '3d_lowres' and not args.disable_next_stage_pred:
+                    print("predicting segmentations for the next stage of the cascade")
+                    predict_next_stage(trainer, join(dataset_directory, trainer.plans['data_identifier'] + "_stage%d" % 1))
 
 
 
